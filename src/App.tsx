@@ -25,6 +25,7 @@ export function App() {
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
   const [clients, setClients] = useState<ClientItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Admin Modal
   const [isAdminOpen, setIsAdminOpen] = useState(false);
@@ -59,8 +60,10 @@ export function App() {
       setServices(svcData);
       setPortfolio(portData);
       setClients(clientData);
+      setLoadError(null);
     } catch (err) {
       console.error('Data load error:', err);
+      setLoadError(err instanceof Error ? err.message : 'Unable to load site data from Supabase.');
     } finally {
       setLoading(false);
     }
@@ -115,6 +118,14 @@ export function App() {
     <div className="relative min-h-screen bg-[#FAFAFA] text-[#111111] selection:bg-[#00D664] selection:text-white">
       {/* Floating Light Luxury Navbar */}
       <Navbar onOpenAdmin={handleOpenAdmin} />
+      {loadError && (
+        <div role="alert" className="mx-auto mt-24 max-w-4xl rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-800">
+          <strong>Could not load live site data.</strong> {loadError}
+          <div className="mt-1 text-xs">
+            If the error says a table is missing, run <code>supabase_schema.sql</code> in this project&apos;s Supabase SQL Editor.
+          </div>
+        </div>
+      )}
 
       {/* Main Sections with Silky Scroll Reveal Animations */}
       <main>
@@ -123,30 +134,30 @@ export function App() {
 
         {/* Dedicated Highlight Metrics Section (4K+ Shoots, 150+ Brands, 99.8% Delight) */}
         <motion.div
-          initial={{ opacity: 0, y: 35 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 40, scale: 0.985 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, amount: 0.15, margin: '-40px' }}
+          transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
         >
           <Highlights content={content} />
         </motion.div>
 
         {/* Creativity Meets Technology - About Section */}
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 40, scale: 0.985 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, amount: 0.15, margin: '-40px' }}
+          transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
         >
           <About content={content} />
         </motion.div>
 
         {/* 4 Unique Interactive 3D Service Experiences */}
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 40, scale: 0.985 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, amount: 0.15, margin: '-40px' }}
+          transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
         >
           <Services
             services={services}
@@ -156,10 +167,10 @@ export function App() {
 
         {/* Immersive Portfolio Showcase */}
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 40, scale: 0.985 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, amount: 0.15, margin: '-40px' }}
+          transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
         >
           <Portfolio
             portfolio={portfolio}
@@ -170,30 +181,30 @@ export function App() {
 
         {/* Why Us - 5 Core Growth Pillars */}
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 40, scale: 0.985 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, amount: 0.15, margin: '-40px' }}
+          transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
         >
           <WhyUs content={content} />
         </motion.div>
 
         {/* Slowly Scrolling Companies & Testimonials */}
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 40, scale: 0.985 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, amount: 0.15, margin: '-40px' }}
+          transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
         >
           <Clients clients={clients} />
         </motion.div>
 
         {/* Contact & Real Inquiry Transmission */}
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-50px' }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          initial={{ opacity: 0, y: 40, scale: 0.985 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, amount: 0.15, margin: '-40px' }}
+          transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
         >
           <Contact content={content} selectedServicePreset={selectedServicePreset} />
         </motion.div>

@@ -1,232 +1,184 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ServiceItem, PortfolioItem, ClientItem, InquiryItem, SiteContent } from '../types';
-import { INITIAL_SERVICES, INITIAL_PORTFOLIO, INITIAL_CLIENTS, INITIAL_SITE_CONTENT } from '../data/initialData';
+import { INITIAL_SITE_CONTENT } from '../data/initialData';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://fjhypjaumezgzgqgpodm.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_3zzWadne7hdbOqJpOKczKg_j5CaZKUq';
-const SUPABASE_SERVICE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqaHlwamF1bWV6Z3pncWdwb2RtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzY5OTEwMSwiZXhwIjoyMTA5Mjc1MTAxfQ.libDcSp8NmMMqWfH70eOvbVW6_5MI15JE4iriKvBsSk';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Public client for anonymous reads & contact form submissions
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let supabaseClient: SupabaseClient | undefined;
 
-// Admin client for privileged updates
-export const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY, {
-  auth: { persistSession: false }
-});
+async function supabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error('Unable to reach Supabase. Check the project URL, project status, and network connection.');
+    }
+    throw error;
+  }
+}
 
-// Storage keys for resilient local fallback
-const STORAGE_SERVICES_KEY = 'ssd_studio_services_v1';
-const STORAGE_PORTFOLIO_KEY = 'ssd_studio_portfolio_v1';
-const STORAGE_CLIENTS_KEY = 'ssd_studio_clients_v1';
-const STORAGE_INQUIRIES_KEY = 'ssd_studio_inquiries_v1';
-const STORAGE_CONTENT_KEY = 'ssd_studio_content_v1';
+function getSupabaseClient(): SupabaseClient {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.');
+  }
+
+  if (!supabaseClient) {
+    supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false },
+      global: { fetch: supabaseFetch }
+    });
+  }
+
+  return supabaseClient;
+}
+
+function throwIfError(error: { message: string } | null): void {
+  if (error) {
+    throw new Error(`Supabase request failed: ${error.message}`);
+  }
+}
 
 // ----------------- SITE CONTENT -----------------
 export async function getSiteContent(): Promise<SiteContent> {
-  const enrichContent = (data: any): SiteContent => {
-    const res = { ...INITIAL_SITE_CONTENT, ...data };
-    if (!res.hero_reel_url || res.hero_reel_url.includes('BigBuckBunny')) {
-      res.hero_reel_url = '/showreel.mp4';
-    }
-    return res;
-  };
+  const { data, error } = await getSupabaseClient().from('site_content').select('*').eq('id', 'main').maybeSingle();
+  throwIfError(error);
 
-  try {
-    const { data, error } = await supabase.from('site_content').select('*').single();
-    if (!error && data) {
-      const enriched = enrichContent(data);
-      localStorage.setItem(STORAGE_CONTENT_KEY, JSON.stringify(enriched));
-      return enriched;
-    }
-  } catch (err) {
-    console.warn('Supabase site_content fallback:', err);
+  const content = { ...INITIAL_SITE_CONTENT, ...data };
+  if (!content.hero_reel_url || content.hero_reel_url.includes('BigBuckBunny')) {
+    content.hero_reel_url = '/showreel.mp4';
   }
-
-  const cached = localStorage.getItem(STORAGE_CONTENT_KEY);
-  if (cached) {
-    try {
-      const enriched = enrichContent(JSON.parse(cached));
-      localStorage.setItem(STORAGE_CONTENT_KEY, JSON.stringify(enriched));
-      return enriched;
-    } catch (e) {}
-  }
-
-  localStorage.setItem(STORAGE_CONTENT_KEY, JSON.stringify(INITIAL_SITE_CONTENT));
-  return INITIAL_SITE_CONTENT;
+  return content;
 }
 
-export async function saveSiteContent(content: SiteContent): Promise<boolean> {
-  localStorage.setItem(STORAGE_CONTENT_KEY, JSON.stringify(content));
-  try {
-    const { error } = await supabaseAdmin.from('site_content').upsert({ id: 'main', ...content });
-    if (error) console.warn('Supabase content upsert error:', error.message);
-  } catch (err) {
-    console.warn('Supabase content sync failed:', err);
-  }
-  return true;
+export async function saveSiteContent(content: SiteContent): Promise<void> {
+  const { error } = await getSupabaseClient().from('site_content').upsert({
+    id: 'main',
+    ...content,
+    updated_at: new Date().toISOString()
+  });
+  throwIfError(error);
 }
 
 // ----------------- SERVICES -----------------
-export async function getServices(): Promise<ServiceItem[]> {
-  const enrichService = (s: any): ServiceItem => {
-    if (s.id === 'creative-media' && !s.image) return { ...s, image: '/services/creative-media-3d.jpg' };
-    if (s.id === 'social-media' && !s.image) return { ...s, image: '/services/social-media-3d.png' };
-    if (s.id === 'branding-design' && !s.image) return { ...s, image: '/services/branding-design-3d.jpg' };
-    if (s.id === 'web-technology' && !s.image) return { ...s, image: '/services/web-technology-3d.jpg' };
-    return s as ServiceItem;
-  };
-
-  try {
-    const { data, error } = await supabase.from('services').select('*');
-    if (!error && data && data.length > 0) {
-      const merged = data.map(enrichService);
-      localStorage.setItem(STORAGE_SERVICES_KEY, JSON.stringify(merged));
-      return merged;
-    }
-  } catch (err) {
-    console.warn('Supabase services fetch failed:', err);
-  }
-
-  const cached = localStorage.getItem(STORAGE_SERVICES_KEY);
-  if (cached) {
-    try {
-      const parsed = JSON.parse(cached);
-      return parsed.map(enrichService);
-    } catch (e) {}
-  }
-
-  localStorage.setItem(STORAGE_SERVICES_KEY, JSON.stringify(INITIAL_SERVICES));
-  return INITIAL_SERVICES;
+function fromServiceRow(row: Record<string, any>): ServiceItem {
+  const { visual_type, ...service } = row;
+  return {
+    ...service,
+    visualType: visual_type ?? row.visualType,
+    items: row.items ?? []
+  } as ServiceItem;
 }
 
-export async function saveServices(services: ServiceItem[]): Promise<boolean> {
-  localStorage.setItem(STORAGE_SERVICES_KEY, JSON.stringify(services));
-  try {
-    const { error } = await supabaseAdmin.from('services').upsert(services);
-    if (error) console.warn('Supabase services upsert error:', error.message);
-  } catch (err) {
-    console.warn('Supabase services sync failed:', err);
-  }
-  return true;
+function toServiceRow(service: ServiceItem) {
+  const { visualType, ...rest } = service;
+  return { ...rest, visual_type: visualType };
+}
+
+export async function getServices(): Promise<ServiceItem[]> {
+  const { data, error } = await getSupabaseClient().from('services').select('*');
+  throwIfError(error);
+  return (data ?? []).map(fromServiceRow);
+}
+
+export async function saveServices(services: ServiceItem[]): Promise<void> {
+  await saveRows('services', services, toServiceRow);
 }
 
 // ----------------- PORTFOLIO -----------------
-export async function getPortfolio(): Promise<PortfolioItem[]> {
-  try {
-    const { data, error } = await supabase.from('portfolio').select('*');
-    if (!error && data && data.length > 0) {
-      localStorage.setItem(STORAGE_PORTFOLIO_KEY, JSON.stringify(data));
-      return data as PortfolioItem[];
-    }
-  } catch (err) {
-    console.warn('Supabase portfolio fetch fallback:', err);
-  }
-
-  const cached = localStorage.getItem(STORAGE_PORTFOLIO_KEY);
-  if (cached) {
-    try {
-      return JSON.parse(cached);
-    } catch (e) {}
-  }
-
-  localStorage.setItem(STORAGE_PORTFOLIO_KEY, JSON.stringify(INITIAL_PORTFOLIO));
-  return INITIAL_PORTFOLIO;
+function fromPortfolioRow(row: Record<string, any>): PortfolioItem {
+  const { category_label, video_url, aspect_ratio, ...project } = row;
+  return {
+    ...project,
+    categoryLabel: category_label ?? row.categoryLabel,
+    videoUrl: video_url ?? row.videoUrl ?? undefined,
+    aspectRatio: aspect_ratio ?? row.aspectRatio
+  } as PortfolioItem;
 }
 
-export async function savePortfolio(portfolio: PortfolioItem[]): Promise<boolean> {
-  localStorage.setItem(STORAGE_PORTFOLIO_KEY, JSON.stringify(portfolio));
-  try {
-    const { error } = await supabaseAdmin.from('portfolio').upsert(portfolio);
-    if (error) console.warn('Supabase portfolio upsert error:', error.message);
-  } catch (err) {
-    console.warn('Supabase portfolio sync failed:', err);
-  }
-  return true;
+function toPortfolioRow(project: PortfolioItem) {
+  const { categoryLabel, videoUrl, aspectRatio, ...rest } = project;
+  return {
+    ...rest,
+    category_label: categoryLabel,
+    video_url: videoUrl ?? null,
+    aspect_ratio: aspectRatio ?? 'landscape'
+  };
+}
+
+export async function getPortfolio(): Promise<PortfolioItem[]> {
+  const { data, error } = await getSupabaseClient().from('portfolio').select('*');
+  throwIfError(error);
+  return (data ?? []).map(fromPortfolioRow);
+}
+
+export async function savePortfolio(portfolio: PortfolioItem[]): Promise<void> {
+  await saveRows('portfolio', portfolio, toPortfolioRow);
 }
 
 // ----------------- CLIENTS -----------------
-export async function getClients(): Promise<ClientItem[]> {
-  try {
-    const { data, error } = await supabase.from('clients').select('*');
-    if (!error && data && data.length > 0) {
-      localStorage.setItem(STORAGE_CLIENTS_KEY, JSON.stringify(data));
-      return data as ClientItem[];
-    }
-  } catch (err) {
-    console.warn('Supabase clients fetch fallback:', err);
-  }
-
-  const cached = localStorage.getItem(STORAGE_CLIENTS_KEY);
-  if (cached) {
-    try {
-      return JSON.parse(cached);
-    } catch (e) {}
-  }
-
-  localStorage.setItem(STORAGE_CLIENTS_KEY, JSON.stringify(INITIAL_CLIENTS));
-  return INITIAL_CLIENTS;
+function fromClientRow(row: Record<string, any>): ClientItem {
+  return row as ClientItem;
 }
 
-export async function saveClients(clients: ClientItem[]): Promise<boolean> {
-  localStorage.setItem(STORAGE_CLIENTS_KEY, JSON.stringify(clients));
-  try {
-    const { error } = await supabaseAdmin.from('clients').upsert(clients);
-    if (error) console.warn('Supabase clients upsert error:', error.message);
-  } catch (err) {
-    console.warn('Supabase clients sync failed:', err);
+function toClientRow(client: ClientItem) {
+  const { logoText: _logoText, logoUrl: _logoUrl, ...storedClient } = client;
+  return storedClient;
+}
+
+export async function getClients(): Promise<ClientItem[]> {
+  const { data, error } = await getSupabaseClient().from('clients').select('*');
+  throwIfError(error);
+  return (data ?? []).map(fromClientRow);
+}
+
+export async function saveClients(clients: ClientItem[]): Promise<void> {
+  await saveRows('clients', clients, toClientRow);
+}
+
+async function saveRows<T extends { id: string }, R extends { id: string }>(
+  table: 'services' | 'portfolio' | 'clients',
+  rows: T[],
+  toRow: (row: T) => R
+): Promise<void> {
+  const client = getSupabaseClient();
+  const { data: existingRows, error: selectError } = await client.from(table).select('id');
+  throwIfError(selectError);
+
+  if (rows.length > 0) {
+    const { error: upsertError } = await client.from(table).upsert(rows.map(toRow));
+    throwIfError(upsertError);
   }
-  return true;
+
+  const retainedIds = new Set(rows.map(row => row.id));
+  const obsoleteIds = (existingRows ?? [])
+    .map(row => row.id)
+    .filter(id => !retainedIds.has(id));
+
+  if (obsoleteIds.length > 0) {
+    const { error: deleteError } = await client.from(table).delete().in('id', obsoleteIds);
+    throwIfError(deleteError);
+  }
 }
 
 // ----------------- INQUIRIES -----------------
 export async function getInquiries(): Promise<InquiryItem[]> {
-  try {
-    const { data, error } = await supabaseAdmin.from('inquiries').select('*').order('created_at', { ascending: false });
-    if (!error && data) {
-      localStorage.setItem(STORAGE_INQUIRIES_KEY, JSON.stringify(data));
-      return data as InquiryItem[];
-    }
-  } catch (err) {
-    console.warn('Supabase inquiries fetch fallback:', err);
-  }
-
-  const cached = localStorage.getItem(STORAGE_INQUIRIES_KEY);
-  if (cached) {
-    try {
-      return JSON.parse(cached);
-    } catch (e) {}
-  }
-  return [];
+  const { data, error } = await getSupabaseClient().from('inquiries').select('*').order('created_at', { ascending: false });
+  throwIfError(error);
+  return (data ?? []) as InquiryItem[];
 }
 
-export async function submitInquiry(inquiry: Omit<InquiryItem, 'id' | 'created_at' | 'status'>): Promise<{ success: boolean; id: string }> {
-  const newInquiry: InquiryItem = {
-    ...inquiry,
-    id: `inq-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-    created_at: new Date().toISOString(),
-    status: 'new'
-  };
-
-  const current = await getInquiries();
-  const updated = [newInquiry, ...current];
-  localStorage.setItem(STORAGE_INQUIRIES_KEY, JSON.stringify(updated));
-
-  try {
-    const { error } = await supabase.from('inquiries').insert([{
-      business_name: newInquiry.business_name,
-      contact_person: newInquiry.contact_person,
-      phone: newInquiry.phone,
-      email: newInquiry.email,
-      service: newInquiry.service,
-      description: newInquiry.description,
-      status: 'new'
-    }]);
-    if (error) {
-      console.warn('Supabase inquiry insert response:', error.message);
-    }
-  } catch (err) {
-    console.warn('Supabase inquiry network error:', err);
+export async function submitInquiry(
+  inquiry: Omit<InquiryItem, 'id' | 'created_at' | 'status'>
+): Promise<{ success: boolean; id: string }> {
+  const { data, error } = await getSupabaseClient()
+    .from('inquiries')
+    .insert([{ ...inquiry, status: 'new' }])
+    .select('id')
+    .single();
+  throwIfError(error);
+  if (!data) {
+    throw new Error('Supabase did not return the saved inquiry ID.');
   }
-
-  return { success: true, id: newInquiry.id };
+  return { success: true, id: data.id };
 }

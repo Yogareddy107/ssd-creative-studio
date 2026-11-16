@@ -94,6 +94,7 @@ export const Footer: React.FC<FooterProps> = React.memo(({ onOpenAdmin }) => {
             
             {/* Camera Emoji Button ONLY - No text, No password tooltip */}
             <button
+              type="button"
               onClick={onOpenAdmin}
               className="p-2 rounded-full hover:bg-neutral-100 border border-transparent hover:border-black/10 text-base hover:scale-125 transition-all cursor-pointer opacity-70 hover:opacity-100"
               aria-label="Studio Access"

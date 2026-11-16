@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ServiceItem, PortfolioItem, ClientItem, InquiryItem, SiteContent } from '../types';
 import { saveServices, savePortfolio, saveClients, saveSiteContent, getInquiries } from '../lib/supabase';
 import { X, Lock, Plus, Trash2, RefreshCw, Layers, Image, Users, MessageSquare, LogOut, Check, Sliders, Sparkles, Phone, Award, FileText, CheckCircle2 } from 'lucide-react';
@@ -10,7 +10,7 @@ interface AdminModalProps {
   services: ServiceItem[];
   portfolio: PortfolioItem[];
   clients: ClientItem[];
-  onDataUpdated: () => void;
+  onDataUpdated: () => void | Promise<void>;
 }
 
 export const AdminModal: React.FC<AdminModalProps> = ({
@@ -25,6 +25,8 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const pinInputRef = useRef<HTMLInputElement>(null);
 
   // Main Category Tab
   const [activeCategory, setActiveCategory] = useState<'content' | 'portfolio' | 'services' | 'clients' | 'inquiries'>('content');
@@ -70,6 +72,12 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   }, [content]);
 
   useEffect(() => {
+    if (isOpen && !isAuthenticated) {
+      pinInputRef.current?.focus();
+    }
+  }, [isOpen, isAuthenticated]);
+
+  useEffect(() => {
     if (isAuthenticated) {
       loadInquiriesList();
     }
@@ -77,12 +85,29 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
   const loadInquiriesList = async () => {
     setLoadingInquiries(true);
-    const list = await getInquiries();
-    setInquiries(list);
-    setLoadingInquiries(false);
+    try {
+      const list = await getInquiries();
+      setInquiries(list);
+      setOperationError(null);
+    } catch (error) {
+      console.error('Unable to load inquiries:', error);
+      setOperationError(error instanceof Error ? error.message : 'Unable to load inquiries from Supabase.');
+    } finally {
+      setLoadingInquiries(false);
+    }
   };
 
   if (!isOpen) return null;
+
+  const runAdminOperation = async (operation: () => Promise<void>) => {
+    setOperationError(null);
+    try {
+      await operation();
+    } catch (error) {
+      console.error('Admin operation failed:', error);
+      setOperationError(error instanceof Error ? error.message : 'The change could not be saved to Supabase.');
+    }
+  };
 
   // Handle PIN check (Required PIN: 188199)
   const handlePinSubmit = (e: React.FormEvent) => {
@@ -90,6 +115,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (pinInput.trim() === '188199') {
       setIsAuthenticated(true);
       setPinError(false);
+      setOperationError(null);
       setPinInput('');
     } else {
       setPinError(true);
@@ -98,10 +124,12 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
   // Save General Site Content
   const handleSaveSection = async (sectionName: string) => {
-    await saveSiteContent(editableContent);
-    onDataUpdated();
-    setSavedSection(sectionName);
-    setTimeout(() => setSavedSection(null), 3000);
+    await runAdminOperation(async () => {
+      await saveSiteContent(editableContent);
+      await onDataUpdated();
+      setSavedSection(sectionName);
+      setTimeout(() => setSavedSection(null), 3000);
+    });
   };
 
   // Add Project
@@ -124,27 +152,31 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     };
 
     const updated = [projectItem, ...portfolio];
-    await savePortfolio(updated);
-    onDataUpdated();
-    setNewProject({
-      title: '',
-      category: 'video',
-      client: '',
-      description: '',
-      image: 'https://images.unsplash.com/photo-1579965342565-1644233772c5?auto=format&fit=crop&w=1200&q=80',
-      videoUrl: '',
-      tags: [],
-      featured: true
+    await runAdminOperation(async () => {
+      await savePortfolio(updated);
+      await onDataUpdated();
+      setNewProject({
+        title: '',
+        category: 'video',
+        client: '',
+        description: '',
+        image: 'https://images.unsplash.com/photo-1579965342565-1644233772c5?auto=format&fit=crop&w=1200&q=80',
+        videoUrl: '',
+        tags: [],
+        featured: true
+      });
+      alert('Project published successfully!');
     });
-    alert('Project published successfully!');
   };
 
   // Delete Project
   const handleDeleteProject = async (id: string) => {
     if (!confirm('Are you sure you want to delete this project?')) return;
     const updated = portfolio.filter(p => p.id !== id);
-    await savePortfolio(updated);
-    onDataUpdated();
+    await runAdminOperation(async () => {
+      await savePortfolio(updated);
+      await onDataUpdated();
+    });
   };
 
   // Add Client
@@ -162,18 +194,22 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     };
 
     const updated = [clientItem, ...clients];
-    await saveClients(updated);
-    onDataUpdated();
-    setNewClient({ name: '', industry: '', testimonial: '', author: '', role: '' });
-    alert('New client partner added successfully!');
+    await runAdminOperation(async () => {
+      await saveClients(updated);
+      await onDataUpdated();
+      setNewClient({ name: '', industry: '', testimonial: '', author: '', role: '' });
+      alert('New client partner added successfully!');
+    });
   };
 
   // Delete Client
   const handleDeleteClient = async (id: string) => {
     if (!confirm('Remove this client?')) return;
     const updated = clients.filter(c => c.id !== id);
-    await saveClients(updated);
-    onDataUpdated();
+    await runAdminOperation(async () => {
+      await saveClients(updated);
+      await onDataUpdated();
+    });
   };
 
   // Add deliverable to service
@@ -191,9 +227,11 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       return s;
     });
 
-    await saveServices(updatedServices);
-    onDataUpdated();
-    setNewServiceDeliverable(prev => ({ ...prev, [serviceId]: '' }));
+    await runAdminOperation(async () => {
+      await saveServices(updatedServices);
+      await onDataUpdated();
+      setNewServiceDeliverable(prev => ({ ...prev, [serviceId]: '' }));
+    });
   };
 
   // Remove deliverable from service
@@ -206,8 +244,10 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       }
       return s;
     });
-    await saveServices(updatedServices);
-    onDataUpdated();
+    await runAdminOperation(async () => {
+      await saveServices(updatedServices);
+      await onDataUpdated();
+    });
   };
 
   return (
@@ -274,12 +314,15 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
             <form onSubmit={handlePinSubmit} className="w-full max-w-xs space-y-4">
               <input
+                ref={pinInputRef}
                 type="password"
+                inputMode="numeric"
+                autoComplete="off"
                 maxLength={6}
-                autoFocus
+                aria-label="Six-digit studio PIN"
                 value={pinInput}
                 onChange={(e) => {
-                  setPinInput(e.target.value);
+                  setPinInput(e.target.value.replace(/\D/g, '').slice(0, 6));
                   setPinError(false);
                 }}
                 placeholder="••••••"
@@ -376,6 +419,11 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
             {/* Right Main Panel */}
             <div className="flex-1 overflow-y-auto p-6 lg:p-8 space-y-6">
+              {operationError && (
+                <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                  {operationError}
+                </div>
+              )}
               
               {/* CATEGORY 1: SITE CONTENT & HIGHLIGHTS */}
               {activeCategory === 'content' && (
